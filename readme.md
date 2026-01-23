@@ -7,11 +7,13 @@ that would work with many versions of IDA without needing to compile against the
 Since the IDAPython API is now uniform in structure it seemed like a good time to tackle
 this project.
 
+Updated 2026-01-23: Added support for IDA v9, tested on 9.1
+
 Ported by:  [zoomgod](https://www.unknowncheats.me/forum/members/146787.html)
 
 [Credits to the author/contributors of SigMaker-x64 for the core sig generating code.](https://github.com/ajkhoury/SigMaker-x64)
 
-** Requires Python 3.5 or newer, tested with 3.8 **
+** Requires Python 3.5 or newer, I recommend 3.8 **
 
 IDA Pro version: Need feedback but oldest for sure would be IDA Pro 6.9.
 
@@ -35,6 +37,7 @@ IDA Pro version: Need feedback but oldest for sure would be IDA Pro 6.9.
     IDA Pro 7.0
 	IDA Pro 7.5, IDAPython 64-bit v7.4.0 final, Python 3.8 64 bit
     IDA Pro 7.6
+    IDA Pro 9.1
 
 ### Sig types supported:
 	IDA Patterns : E8 ? ? ? ? 48 8B 83 ? ? ? ? 48 8B CB
@@ -43,9 +46,6 @@ IDA Pro version: Need feedback but oldest for sure would be IDA Pro 6.9.
 
 ### Bug fixes:
     Fixed issue with rebased images (related to ida inf struct)
-
-### Not ported:
-    1. The crc signature portion was dropped.
 
 ### Changes:
     1. Making a sig from selection was replaced with an auto-create at current address. 

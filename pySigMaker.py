@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-PLUGIN_VERSION = '0.1.50'
+PLUGIN_VERSION = '0.2.50'
 
 # If True the starting address will be current function when making a sig for functions.
 # SigMaker-x64 behavior is to look for 5 or more references before adding function start
@@ -52,8 +52,15 @@ except:
 from PyQt5 import Qt, QtCore, QtGui, QtWidgets
 
 import idc
-import idaapi, ida_kernwin
+import idaapi, ida_kernwin, ida_bytes
 from idaapi import BADADDR
+
+#added for v9 compatibility
+from ida_pro import IDA_SDK_VERSION
+import ida_nalt, ida_search
+
+major, minor = divmod(IDA_SDK_VERSION, 100)
+minor, build = divmod(minor, 10)
 
 # Ignore this, just for when I debug gui layout issues
 GUI_DBG_ENABLED = False
@@ -102,7 +109,9 @@ class LogOptions(IntEnum):
 #
 
 class QueryStruct:
-    def __init__(self, pattern=b'', mask = b'', startea=BADADDR, endea=BADADDR):
+    def __init__(self, major, idasig, pattern=b'', mask = b'', startea=BADADDR, endea=BADADDR):
+        self.major = major
+        self.idasig = idasig
         self.pattern = pattern
         self.mask = mask
         self.startea = startea
@@ -133,10 +142,25 @@ def BinSearch(query) -> QueryStruct:
     endea = query.endea
     if query.startea == BADADDR:
         query.startea = idaapi.inf_get_max_ea()
+    
+    query.ea = BADADDR
 
-    query.ea = idaapi.bin_search( query.startea, query.endea, query.pattern, query.mask,
-        idaapi.BIN_SEARCH_FORWARD,
-        idaapi.BIN_SEARCH_NOBREAK | idaapi.BIN_SEARCH_NOSHOW )
+    if query.major < 9:
+        query.ea = idaapi.bin_search( query.startea, query.endea, query.pattern, query.mask,
+            idaapi.BIN_SEARCH_FORWARD,
+            idaapi.BIN_SEARCH_NOBREAK | idaapi.BIN_SEARCH_NOSHOW )
+    else:
+
+        patterns = ida_bytes.compiled_binpat_vec_t()
+        encoding = ida_nalt.get_default_encoding_idx(ida_nalt.BPU_1B) 
+    
+        # The 'zero_ea' argument is used as a base address for the pattern
+        ida_bytes.parse_binpat_str(patterns, 0, query.idasig, 16, encoding)
+        result = ida_bytes.bin_search(query.startea, query.endea, patterns, ida_search.SEARCH_DOWN | ida_search.SEARCH_REGEX)
+        if isinstance(result, tuple):
+            query.ea = result[0]
+        else:
+            query.ea = result # Fallback for potential API variations
 
     return query
 
@@ -145,6 +169,7 @@ def MakeBin(ida_pattern, startea=BADADDR, endea=BADADDR) -> QueryStruct:
         makeBin(ida_pattern)
         Returns QueryStruct with bin_search compatible pattern and mask from an IDA style pattern
     """
+    global major
 
     patt = bytearray()
     mask = bytearray()
@@ -157,9 +182,12 @@ def MakeBin(ida_pattern, startea=BADADDR, endea=BADADDR) -> QueryStruct:
             patt.append(int(i, 16))
             mask.append(1)
 
-    return QueryStruct(bytes(patt), bytes(mask), startea, endea)
+    return QueryStruct(major, ida_pattern, bytes(patt), bytes(mask), startea, endea)
 
 def BinQuery(sig, flag = QueryTypes.QUERY_FIRST, startea=None, endea = None):
+
+    global major
+
     """
     Args:
         sig : IDA style pattern string
@@ -171,9 +199,9 @@ def BinQuery(sig, flag = QueryTypes.QUERY_FIRST, startea=None, endea = None):
         flag == QUERY_UNIQUE returns boolean, search stops when matches > 1
     """
 
-    query = MakeBin(sig)
-
     Result = []
+
+    query = MakeBin(sig)
 
     query = BinSearch(query)
     while query.ea != BADADDR:
@@ -197,6 +225,7 @@ def BinQuery(sig, flag = QueryTypes.QUERY_FIRST, startea=None, endea = None):
         return BADADDR
 
     raise ValueError('Invalid flag passed')
+
 
 #
 #
@@ -602,6 +631,7 @@ class SigMaker:
         """
             Generate shortest unique signature possible to current function
         """
+        global major
 
         self._reset()
 
@@ -653,10 +683,9 @@ class SigMaker:
             Rather than create a sig from selection this
             gets current ea from screen and then creates
             the shortest sig possible.
-
-            I don't really see a need for making sigs from a
-            selection but can add it if enough people need it.
         """
+
+        global major
 
         self._reset()
 
@@ -1205,7 +1234,7 @@ class SigMakerPlugin:
 
 def banner(hotkey):
     print('---------------------------------------------------------------------------------------------')
-    print('pySigMaker: zoomgod - unknowncheats.me (credit to ajkhoury for origional SigMaker-X64 code)')
+    print('pySigMaker: zoomgod - unknowncheats.me')
     print('            v%s - hotkey: %s' % (PLUGIN_VERSION, hotkey))
     print('---------------------------------------------------------------------------------------------')
 
