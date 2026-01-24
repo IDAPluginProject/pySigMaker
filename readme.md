@@ -13,9 +13,9 @@ Ported by:  [zoomgod](https://www.unknowncheats.me/forum/members/146787.html)
 
 ** Python 3.8 Recommended **
 
-####Updates:
-2026-01-23: Added support for IDA v9, tested on 9.1
-2026-01-24: Changed bin_search flags for IDA 9
+#### Updates:  
+	2026-01-23 Added support for IDA v9, tested on 9.1  
+	2026-01-24 Changed bin_search flags for IDA 9  
 
 
 ### Install:
