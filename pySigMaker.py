@@ -146,17 +146,20 @@ def BinSearch(query) -> QueryStruct:
     query.ea = BADADDR
 
     if query.major < 9:
+        # this is to keep support for v7 working, v8 would land here as well but I never had it to test on.
         query.ea = idaapi.bin_search( query.startea, query.endea, query.pattern, query.mask,
             idaapi.BIN_SEARCH_FORWARD,
             idaapi.BIN_SEARCH_NOBREAK | idaapi.BIN_SEARCH_NOSHOW )
     else:
-
+        # bin_search in 9.1 used to be bin_search3 in v7 so parameters changed
         patterns = ida_bytes.compiled_binpat_vec_t()
         encoding = ida_nalt.get_default_encoding_idx(ida_nalt.BPU_1B) 
     
         # The 'zero_ea' argument is used as a base address for the pattern
         ida_bytes.parse_binpat_str(patterns, 0, query.idasig, 16, encoding)
-        result = ida_bytes.bin_search(query.startea, query.endea, patterns, ida_search.SEARCH_DOWN | ida_search.SEARCH_REGEX)
+        #result = ida_bytes.bin_search(query.startea, query.endea, patterns, ida_search.SEARCH_DOWN | ida_search.SEARCH_REGEX)
+        result = ida_bytes.bin_search(query.startea, query.endea, patterns, ida_bytes.BIN_SEARCH_FORWARD | ida_bytes.BIN_SEARCH_NOBREAK | ida_bytes.BIN_SEARCH_NOSHOW)
+        
         if isinstance(result, tuple):
             query.ea = result[0]
         else:
@@ -664,7 +667,6 @@ class SigMaker:
                     if len(self.Sigs[sigIndex].sig) > 5:
                         self.Sigs[sigIndex].bUnique = BinQuery(' '.join(self.Sigs[sigIndex].sig), QueryTypes.QUERY_UNIQUE)
                 else:
-                    #return False
                     if sigIndex == 0:
                         self.Sigs = self.Sigs[1:]
                     elif sigIndex == len(self.Sigs) - 1:
