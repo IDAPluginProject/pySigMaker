@@ -7,17 +7,16 @@ that would work with many versions of IDA without needing to compile against the
 Since the IDAPython API is now uniform in structure it seemed like a good time to tackle
 this project.
 
-Updates:
-	Updated 2026-01-23: Added support for IDA v9, tested on 9.1
-	Updated 2026-01-24: Changed bin_search flags for IDA 9
-
 Ported by:  [zoomgod](https://www.unknowncheats.me/forum/members/146787.html)
 
 [Credits to the author/contributors of SigMaker-x64 for the core sig generating code.](https://github.com/ajkhoury/SigMaker-x64)
 
-** Requires Python 3.5 or newer, I recommend 3.8 **
+** Python 3.8 Recommended **
 
-IDA Pro version: Need feedback but oldest for sure would be IDA Pro 6.9.
+####Updates:
+2026-01-23: Added support for IDA v9, tested on 9.1
+2026-01-24: Changed bin_search flags for IDA 9
+
 
 ### Install:
     copy pySigMaker.py into IDA plugin folder.
