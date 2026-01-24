@@ -7,8 +7,9 @@ that would work with many versions of IDA without needing to compile against the
 Since the IDAPython API is now uniform in structure it seemed like a good time to tackle
 this project.
 
-Updated 2026-01-23: Added support for IDA v9, tested on 9.1
-Updated 2026-01-24: Changed bin_search flags for IDA 9
+Updates:
+	Updated 2026-01-23: Added support for IDA v9, tested on 9.1
+	Updated 2026-01-24: Changed bin_search flags for IDA 9
 
 Ported by:  [zoomgod](https://www.unknowncheats.me/forum/members/146787.html)
 
