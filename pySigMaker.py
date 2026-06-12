@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-PLUGIN_VERSION = '0.2.50'
+PLUGIN_VERSION = '0.5.10'
 
 # If True the starting address will be current function when making a sig for functions.
 # SigMaker-x64 behavior is to look for 5 or more references before adding function start
@@ -42,14 +42,15 @@ else:
     HOTKEY_CONFLICT = len(SIGMAKER_X64_PLUGINS) > 0
 
 try:
-    import tkinter
+    import tkinter  # Used to put sigs on clipboard
     from enum import unique, IntEnum
 except:
-    print('Python 3.4 > required.')
+    print('Python 3.8 > required, 3.8 recommended.')
     sys.exit(0)
 
 # Gui
 from PyQt5 import Qt, QtCore, QtGui, QtWidgets
+from PyQt5.QtCore import Qt
 
 import idc
 import idaapi, ida_kernwin, ida_bytes
@@ -62,13 +63,8 @@ import ida_nalt, ida_search
 major, minor = divmod(IDA_SDK_VERSION, 100)
 minor, build = divmod(minor, 10)
 
-# Ignore this, just for when I debug gui layout issues
-GUI_DBG_ENABLED = False
-try:
-    from SigMakerDebug import QTDebugHelper
-    GUI_DBG_ENABLED = True
-except:
-    pass
+# Adds a Debug tab to dump QT object trees
+GUI_DBG_ENABLED = True
 
 @unique
 class QueryTypes(IntEnum):
@@ -97,9 +93,8 @@ class SigSelect(IntEnum):
 
 @unique
 class LogOptions(IntEnum):
-    LOG_ERROR       = 0
-    LOG_RESULT      = 1
-    LOG_DEBUG       = 2
+    LOG_RESULT      = 0
+    LOG_DEBUG       = 1
 
 
 #
@@ -107,7 +102,6 @@ class LogOptions(IntEnum):
 #  Utility functions
 #
 #
-
 class QueryStruct:
     def __init__(self, major, idasig, pattern=b'', mask = b'', startea=BADADDR, endea=BADADDR):
         self.major = major
@@ -522,7 +516,7 @@ class SigMaker:
             func = idaapi.get_func(startea)
 
             if not func or func.start_ea == BADADDR:
-                self.__plugin.log('Selected address not in a valid function.', LogOptions.LOG_ERROR)
+                self.__plugin.log('Selected address not in a valid function.', LogOptions.LOG_NORMAL)
                 return False
 
             if func.start_ea != startea:
@@ -545,7 +539,7 @@ class SigMaker:
                     eaCurrent = idaapi.get_next_cref_to(func.start_ea, eaCurrent)
 
         if not len(self.Sigs):
-            self.__plugin.log('Automated signature generation failed, no references found.', LogOptions.LOG_ERROR)
+            self.__plugin.log('Automated signature generation failed, no references found.')
             return False
 
         self.__plugin.log('Added %i references.' % len(self.Sigs), LogOptions.LOG_DEBUG)
@@ -585,7 +579,7 @@ class SigMaker:
                             max = wildcards
 
         if selected == -1:
-            self.__plugin.log('Failed to create signature.', LogOptions.LOG_ERROR)
+            self.__plugin.log('Failed to create signature.')
             return False
 
         sig = self.Sigs[selected]
@@ -640,14 +634,14 @@ class SigMaker:
 
         startea = idc.get_screen_ea()
         if startea in [0, BADADDR]:
-            self.__plugin.log('Current ea == BADADDR.', LogOptions.LOG_ERROR)
+            self.__plugin.log('Current ea == BADADDR.')
             return False
 
         if FUNC_START_EA:
             # Get function start
             func = idaapi.get_func(startea)
             if not func or func.start_ea == BADADDR:
-                self.__plugin.log('Must be in a function.', LogOptions.LOG_ERROR)
+                self.__plugin.log('Must be in a function.')
                 return False
             elif startea != func.start_ea:
                 startea = func.start_ea
@@ -693,7 +687,7 @@ class SigMaker:
 
         startea = idc.get_screen_ea()
         if startea in [0, BADADDR]:
-            self.__plugin.log('Click on address you want sig for.', LogOptions.LOG_ERROR)
+            self.__plugin.log('Click on address you want sig for.')
             return False
 
         sig = SigCreateStruct()
@@ -710,10 +704,152 @@ class SigMaker:
                 if len(self.Sigs[sigIndex].sig) > 5:
                     self.Sigs[sigIndex].bUnique = BinQuery(' '.join(self.Sigs[sigIndex].sig), QueryTypes.QUERY_UNIQUE)
             else:
-                self.__plugin.log('Unable to create sig at selected address', LogOptions.LOG_ERROR)
+                self.__plugin.log('Unable to create sig at selected address')
                 return False
 
         self._chooseSig()
+
+#
+#
+# QT debug utility class
+#
+#
+class QTDebugHelper:
+
+    def __init__(self, plugin):
+        self.plugin = plugin
+        self.fh = None
+        self._logdir = idaapi.get_user_idadir()
+
+    def _log(self, txt):
+        if self.fh:
+            self.fh.write('%s\n' % txt)
+
+    def _getClassName(self, obj):
+        cls = '%s' % (type(obj))
+        return cls.split("'", 1)[1].split("'")[0]
+
+    def _printDescription(self, obj, depth = 0):
+
+        objName = obj.objectName()
+        txt     = []
+
+        if objName != '':
+            txt.append('Name="{}"'.format(objName))
+
+        try: 
+            text = obj.text()
+            if text != '':
+                txt.append('Text="{}"'.format(text))
+        except: 
+            pass
+
+        try: 
+            winTitle = obj.windowTitle()
+            if winTitle != '':
+                txt.append('Title="{}"'.format(winTitle))
+        except: 
+            pass
+
+        try:
+            if obj.layout():
+                txt.append('layout={}'.format(self._getClassName(obj.layout())))
+        except:
+            pass
+
+        childCount = len(obj.children())
+        if childCount:
+            txt.append('children={}'.format(childCount))
+
+        cls = self._getClassName(obj)
+
+        self._log('{}{} {}'.format('\t' * depth, cls, ', '.join(txt)))
+
+    def _dump(self, obj, depth=0):
+        self._printDescription(obj, depth)
+        for child in obj.children():
+            self._dump(child, depth+1)
+
+    def _dumpForm(self):
+        fname = '%s\\QtFormDump.log' % self._logdir
+        self.fh = open(fname, 'w')
+        widget = self._getWidget(True)
+        if widget:
+            self._dump(widget)
+        self.fh.close()
+        self.fh = None
+        print("Wrote: %s" % fname)
+        os.startfile(fname)
+
+    def _dumpAll(self):
+        fname = '%s\\QtFormFullDump.log' % self._logdir
+        self.fh = open(fname, 'w')
+        widget = self._getWidget(False)
+        if widget:
+            self._dump(widget)
+        self.fh.close()
+        self.fh = None
+        print("Wrote: %s" % fname)
+        os.startfile(fname)
+
+    def _pathToPlugin(self):
+
+        fname = '%s\\PathToPlugin.log' % self._logdir
+        self.fh = open(fname, 'w')
+
+        w = []
+        widget = self.plugin.widget
+        while widget:
+            w.append(widget)
+            widget = widget.parent()
+
+        w.reverse()
+        for widget in w:
+            self._printDescription(widget)
+
+        self.fh.close()
+        self.fh = None
+        print("Wrote: %s" % fname)
+        os.startfile(fname)
+
+    def initDebugTab(self):
+
+        tab = QtWidgets.QWidget()
+        layout = QtWidgets.QVBoxLayout()
+
+        dbgGuiDump = QtWidgets.QPushButton('Dump Form')
+        dbgGuiDump.clicked.connect(self._dumpForm)
+
+        dbgGuiDumpAll = QtWidgets.QPushButton('Dump Full')
+        dbgGuiDumpAll.clicked.connect(self._dumpAll)
+
+        dbgGuiContainer = QtWidgets.QPushButton('Path To Plugin')
+        dbgGuiContainer.clicked.connect(self._pathToPlugin)
+        
+        
+        layout.addWidget(dbgGuiDump)
+        layout.addWidget(dbgGuiDumpAll)
+        layout.addWidget(dbgGuiContainer)
+
+        tab.setLayout(layout)
+        self.plugin.tabControl.addTab(tab, 'Dbg Gui')
+
+    def _getWidget(self, bWinTitle):
+
+        parent = self.plugin.widget
+        widget = None
+
+        # follow parent tree
+        while parent:
+            if bWinTitle:
+                if parent.windowTitle() == self.plugin.widget.windowTitle():
+                    widget = parent
+            else:
+                widget = parent
+
+            parent = parent.parent()
+
+        return widget
 
 #
 #
@@ -721,21 +857,22 @@ class SigMaker:
 #
 #
 class PluginGui(idaapi.PluginForm):
-
+    
     def __init__(self, plugin):
 
         global GUI_DBG_ENABLED
 
         idaapi.PluginForm.__init__(self)
         self.__plugin = plugin
+        self.__parent = None
 
-        if GUI_DBG_ENABLED:
-            self._QtDbgHelper = QTDebugHelper(self)
-        else:
-            self._QtDbgHelper = None
+        self._QtDbgHelper = QTDebugHelper(self)
 
         self.closed = False
 
+        self._root_widget = None
+        self._output_window = None
+        self._docked = False
     #
     # IDA PluginForm overloaded methods
     #
@@ -749,15 +886,9 @@ class PluginGui(idaapi.PluginForm):
     def OnCreate(self, form):
         self.widget = self.FormToPyQtWidget(form)
         self.PopulateForm()
-
-        # Bit hackish but is needed to restore form position/size.
-        # Parent widget isn't set until after this function returns.
-        # The passed form is a child under the main TWidget created by IDA
-        QtCore.QTimer.singleShot(1000, self._formState)
-
-    def OnClose(self, form):
-        self._formState(bSave=True)
-        self.closed = True
+        self.__parent = self.FormToPyQtWidget(form)
+        # Parent widget isn't set until after this function returns, the timer deals with that
+        QtCore.QTimer.singleShot(0, self._formState)
 
     #
     # Connected QT events
@@ -789,7 +920,7 @@ class PluginGui(idaapi.PluginForm):
             mask = ''
 
         if not sig:
-            self.__plugin.log('Invalid sig: "%s"' % sig, LogOptions.LOG_ERROR)
+            self.__plugin.log('Invalid sig: "%s"' % sig)
             return
 
         self.__plugin.Settings.addHistory(patt, mask)
@@ -799,12 +930,12 @@ class PluginGui(idaapi.PluginForm):
         result = BinSearch(query)
 
         #
-        # Always logging tests to output so set to LOG_ERROR
+        # Always logging tests to output
         #
         if result != BADADDR:
-            self.__plugin.log('Sig matched @ 0x%X' % result.ea, LogOptions.LOG_ERROR)
+            self.__plugin.log('Sig matched @ 0x%X' % result.ea)
         else:
-            self.__plugin.log('No match found', LogOptions.LOG_ERROR)
+            self.__plugin.log('No match found')
 
     def _sigTestSelectChanged(self, index):
 
@@ -841,6 +972,24 @@ class PluginGui(idaapi.PluginForm):
 
         self.__plugin.Settings.save()
 
+    def _dockSettingChanged(self, checkedState):
+        if checkedState == QtCore.Qt.Unchecked:
+            self.__plugin.Settings.bAutoDock = False
+            self.__plugin.Settings.saveFormGeometry(True)
+        else:
+            self.__plugin.Settings.bAutoDock = True
+
+        self.__plugin.Settings.save()
+        self._formState(False)
+
+    def _saveSettings(self):
+        self.__plugin.Settings.save()
+        self._formState(True)
+
+    def _resetSettings(self):
+        self.__plugin.Settings.reset(True)
+        ida_kernwin.warning("IDA restart required due to settings reset")
+
     def _archiveSigmaker(self):
 
         global PLUGIN_DIR, HOTKEY_CONFLICT, SIGMAKER_X64_PLUGINS
@@ -850,16 +999,16 @@ class PluginGui(idaapi.PluginForm):
         for name in SIGMAKER_X64_PLUGINS:
 
             if not os.path.exists('%s/orig_sigmaker' % PLUGIN_DIR):
-                self.__plugin.log('mkdir: %s/orig_sigmaker' % (PLUGIN_DIR), LogOptions.LOG_ERROR)
+                self.__plugin.log('mkdir: %s/orig_sigmaker' % (PLUGIN_DIR))
                 os.mkdir('%s/orig_sigmaker' % PLUGIN_DIR)
 
             if os.path.isfile('%s/%s' % (PLUGIN_DIR, name)):
                 shutil.move('%s/%s' % (PLUGIN_DIR, name), '%s/orig_sigmaker/%s' % (PLUGIN_DIR, name))
                 bDidMove = True
-                self.__plugin.log('Moved: %s/%s to %s/orig_sigmaker/%s' % (PLUGIN_DIR, name, PLUGIN_DIR, name), LogOptions.LOG_ERROR)
+                self.__plugin.log('Moved: %s/%s to %s/orig_sigmaker/%s' % (PLUGIN_DIR, name, PLUGIN_DIR, name))
 
         if bDidMove:
-            self.__plugin.log('SigMaker-x64 archived, restart IDA to unload it', LogOptions.LOG_ERROR)
+            self.__plugin.log('SigMaker-x64 archived, restart IDA to unload it')
             HOTKEY_CONFLICT = False
             SIGMAKER_X64_PLUGINS = []
             self.archiveBtn.setEnabled(False)
@@ -869,7 +1018,7 @@ class PluginGui(idaapi.PluginForm):
         if hotkey != self.__plugin.Settings.hotkey:
             self.__plugin.Settings.hotkey = hotkey
             self.__plugin.Settings.save()
-            self.__plugin.log('\npySigMaker hotkey changed to %s, IDA restart needed.' % hotkey, LogOptions.LOG_ERROR)
+            self.__plugin.log('\npySigMaker hotkey changed to %s, IDA restart needed.' % hotkey)
 
     def _defaultHotkey(self):
         global PLUGIN_HOTKEY
@@ -877,38 +1026,83 @@ class PluginGui(idaapi.PluginForm):
         if PLUGIN_HOTKEY != self.__plugin.Settings.hotkey:
             self.__plugin.Settings.hotkey = PLUGIN_HOTKEY
             self.__plugin.Settings.save()
-            self.__plugin.log('\npySigMaker hotkey changed to %s (default), IDA restart needed.' % PLUGIN_HOTKEY, LogOptions.LOG_ERROR)
+            self.__plugin.log('\npySigMaker hotkey changed to %s (default), IDA restart needed.' % PLUGIN_HOTKEY)
+
+    def _get_root_widget(self, plugin_widget):
+
+            parent = plugin_widget
+            widget = None
+
+            # follow parent tree
+            while parent:
+                widget = parent
+                parent = parent.parent()
+
+            return widget
+
+    def _find_widget_by_name(self, obj, name):
+
+        objName = obj.objectName()
+
+        if objName == name:
+            return obj
+
+        """
+        try: 
+            if obj.windowTitle() == name:
+                return obj
+        except: 
+            pass
+        """
+
+        for child in obj.children():
+            found = self._find_widget_by_name(child, name)
+            if found:
+                return found
+
+        return None
+
+    def _getWidget(self):
+        widget, parent = None, self.widget
+        while parent:
+            if parent.windowTitle() == self.widget.windowTitle():
+                widget = parent
+            parent = parent.parent()
+        return widget
 
     #
     # Save/Restore plugin form position and size.
     #
     def _formState(self, bSave=False):
 
-        def getWidget():
-            widget, parent = None, self.widget
-            while parent:
-                if parent.windowTitle() == self.widget.windowTitle():
-                    widget = parent
-                parent = parent.parent()
-            return widget
+        if self.__plugin.Settings.bAutoDock:
+            ida_kernwin.set_dock_pos("pySigMaker", "Output window", ida_kernwin.DP_RIGHT) 
 
-        widget = getWidget()
+        widget = self._getWidget()
         if not widget:
-            self.__plugin.log('Failed to save form info', LogOptions.LOG_ERROR)
+            self.__plugin.log('Failed to get form widget')
             return
 
+        self.__plugin.Settings.setWidget(widget)
+
         if bSave:
-            qrect = widget.geometry()
-            x, y, w, h = qrect.x(), qrect.y(), qrect.width(), qrect.height()
-            self.__plugin.Settings.saveFormInfo(x, y, w, h)
-            self.__plugin.Settings.save()
-            self.__plugin.log('Form saved, x={}, y={}, w={}, h={}'.format(x, y, w, h), LogOptions.LOG_DEBUG)
+            self.__plugin.Settings.saveFormGeometry()
+            if self.__plugin.Settings.bAutoDock:
+                widget.setMaximumSize(self.__plugin.Settings.w, self.__plugin.Settings.h)
+            else:
+                widget.resize(self.__plugin.Settings.w, self.__plugin.Settings.h)
         else:
             x, y, w, h = self.__plugin.Settings.getFormInfo()
-            if x > -1:
-                widget.setGeometry(x, y, w, h)
-                self.__plugin.log('Form restored: x={}, y={}, w={}, h={}'.format(x, y, w, h), LogOptions.LOG_DEBUG)
+            if self.__plugin.Settings.bAutoDock:
+                if w > -1:
+                    widget.setMaximumSize(w, h)
+            else:
+                widget.setMaximumSize(800, 800)
+                widget.resize(self.__plugin.Settings.w, self.__plugin.Settings.h)
+
             self.patt.setCurrentText('')
+
+            
 
     #
     # QT widget creation
@@ -953,13 +1147,13 @@ class PluginGui(idaapi.PluginForm):
         # Log to output window options
         #
         self.logOpt = QtWidgets.QComboBox()
-        for s in ['Errors', 'Errors/Results', 'Debug']:
+        for s in ['Errors/Results', 'Debug']:
             self.logOpt.addItem(s)
 
         if self.__plugin.Settings.LogLevel > LogOptions.LOG_DEBUG:
             self.__plugin.Settings.LogLevel = LogOptions.LOG_DEBUG
-        elif self.__plugin.Settings.LogLevel < LogOptions.LOG_ERROR:
-            self.__plugin.Settings.LogLevel = LogOptions.LOG_ERROR
+        elif self.__plugin.Settings.LogLevel < LogOptions.LOG_RESULT:
+            self.__plugin.Settings.LogLevel = LogOptions.LOG_RESULT
 
         self.logOpt.setCurrentIndex(self.__plugin.Settings.LogLevel)
         self.logOpt.currentIndexChanged.connect(self._logLevelChanged)
@@ -992,6 +1186,15 @@ class PluginGui(idaapi.PluginForm):
 
         self.safeData.stateChanged.connect(self._safeDataChecked)
 
+        self.autoDock = QtWidgets.QCheckBox()
+        self.autoDock.setTristate(False)
+
+        if self.__plugin.Settings.bAutoDock:
+            self.autoDock.setCheckState(QtCore.Qt.Checked)
+        else:
+            self.autoDock.setCheckState(QtCore.Qt.Unchecked)
+        self.autoDock.stateChanged.connect(self._dockSettingChanged)
+
         if HOTKEY_CONFLICT:
             self.archiveBtn = QtWidgets.QPushButton('Archive SigMaker-x64')
             self.archiveBtn.clicked.connect(self._archiveSigmaker)
@@ -999,8 +1202,19 @@ class PluginGui(idaapi.PluginForm):
         formLayout.addRow('Output', self.logOpt)
         formLayout.addRow('Sig Choice', self.sigSelectorOpt)
         formLayout.addRow('Reliable Data Only', self.safeData)
-
+        formLayout.addRow('Auto Dock', self.autoDock)
         layout.addLayout(formLayout)
+
+        self.saveSettingsBtn = QtWidgets.QPushButton('Save Settings')
+        self.saveSettingsBtn.clicked.connect(self._saveSettings)
+        self.resetSettingsBtn = QtWidgets.QPushButton('Reset Settings')
+        self.resetSettingsBtn.clicked.connect(self._resetSettings)
+        
+        layoutSettings = QtWidgets.QHBoxLayout()
+        layoutSettings.addWidget(self.saveSettingsBtn)
+        layoutSettings.addWidget(self.resetSettingsBtn)
+        layout.addLayout(layoutSettings)
+        
 
         layout2 = QtWidgets.QHBoxLayout()
 
@@ -1107,6 +1321,14 @@ class PluginSettings:
         self.__plugin     = plugin
         self.__loaded     = False
         self.__configName = idaapi.get_user_idadir() + '\\pySigMaker.config'
+        self.__widget = None
+
+        self.reset()
+
+    def setWidget(self, widget):
+        self.__widget = widget
+
+    def reset(self, bSave = False):
 
         # 0 disables limit
         self.maxRefs = 0
@@ -1114,18 +1336,21 @@ class PluginSettings:
         # False creates less reliable sigs IE: they break easier on updates
         self.bOnlyReliable = True
 
+        # True causes form to auto dock to right of Output window
+        self.bAutoDock = True
+
         # Controls how sig is selected from multiple unique sigs
         self.SigSelect = SigSelect.OPT_LENGTH
 
         # Type of sig to return
         self.SigType = SigType.SIG_IDA
 
-        self.LogLevel = LogOptions.LOG_ERROR
+        self.LogLevel = LogOptions.LOG_RESULT
 
         # Max sig length IE: 'E9 ?' is length of 2
         self.maxSigLength = 100
 
-        # Sig test history
+        # Sig test history, keeps last 10 tested sigs
         self._history = []
 
         # default hot key
@@ -1137,11 +1362,15 @@ class PluginSettings:
         self.w = -1
         self.h = -1
 
-    def saveFormInfo(self, x, y, w, h):
-        self.x = x
-        self.y = y
-        self.w = w
-        self.h = h
+        if bSave:
+            self.save()
+
+    def saveFormGeometry(self, reset=False):
+        if reset:
+            self.x, self.y, self.w, self.h = -1, -1, -1, -1
+        else:
+            qrect = self.__widget.geometry()
+            self.x, self.y, self.w, self.h = qrect.x(), qrect.y(), qrect.width(), qrect.height()
 
     def getFormInfo(self):
         return self.x, self.y, self.w, self.h
@@ -1169,11 +1398,11 @@ class PluginSettings:
             return
 
         if not os.path.exists(self.__configName):
-            self.__plugin.log('pySigMaker: Using defaults', LogOptions.LOG_ERROR)
+            self.__plugin.log('pySigMaker: Using defaults')
             return False
 
         if not os.path.isfile(self.__configName):
-            self.__plugin.log('pySigMaker: Using defaults', LogOptions.LOG_ERROR)
+            self.__plugin.log('pySigMaker: Using defaults')
             return False
 
 
@@ -1184,7 +1413,7 @@ class PluginSettings:
             fh = open(self.__configName, 'rb')
             d = pickle.load(fh)
         except:
-            self.__plugin.log('pySigMaker: Cfg corrupt, using defaults', LogOptions.LOG_ERROR)
+            self.__plugin.log('pySigMaker: Cfg corrupt, using defaults')
 
         if fh:
             fh.close()
@@ -1212,7 +1441,7 @@ class PluginSettings:
             fh = open(self.__configName, 'wb')
             pickle.dump(d, fh)
         except:
-            self.__plugin.log('pySigMaker: Failed to save config', LogOptions.LOG_ERROR)
+            self.__plugin.log('pySigMaker: Failed to save config')
 
         if fh:
             fh.close()
@@ -1226,7 +1455,9 @@ class SigMakerPlugin:
         self.Settings.load()
 
     def log(self, msg, log_level = LogOptions.LOG_RESULT):
-        if log_level == LogOptions.LOG_ERROR or log_level <= self.Settings.LogLevel:
+        # Changed so error and output are always shown
+        # LOG_DEBUG is the only one optional now.
+        if log_level <= LogOptions.LOG_RESULT or log_level <= self.Settings.LogLevel:
             print(msg)
 
     def showGui(self):
@@ -1247,29 +1478,41 @@ def banner(hotkey):
 gsigmaker = SigMakerPlugin()
 banner(gsigmaker.Settings.hotkey)
 
-def PLUGIN_ENTRY():
-    return sigmaker_t()
-
 class sigmaker_t(idaapi.plugin_t):
 
     flags = idaapi.PLUGIN_UNL
-    comment = 'Creates code signature patterns.'
+    #flags = idaapi.PLUGIN_FIX | idaapi.PLUGIN_HIDE
+
+    comment = 'Create signatures for run time pattern matching.'
     help = ''
     wanted_name = 'pySigMaker'
     wanted_hotkey = gsigmaker.Settings.hotkey
 
     def init(self):
-        global gsigmaker
-        if not gsigmaker:
-            gsigmaker = SigMakerPlugin()
+        #global gsigmaker
+        #if not gsigmaker:
+        #    ida_kernwin.msg("[+] init instance created\n")
+        #    gsigmaker = SigMakerPlugin()
+
+        #self.hook = UiHook()
+        #self.hook.hook()
+
         return idaapi.PLUGIN_KEEP
 
     def run(self, arg=None):
-        global gsigmaker
-        if not gsigmaker:
-            gsigmaker = SigMakerPlugin()
-        gsigmaker.showGui()
+        #ida_kernwin.msg("[+] run called\n")
+        #global gsigmaker
+        #if not gsigmaker:
+        #    ida_kernwin.msg("[+] run instance created\n")
+        #    gsigmaker = SigMakerPlugin()
+        gsigmaker.showGui()       
+        
 
     def term(self):
         global gsigmaker
         gsigmaker = None
+        if hasattr(self, 'hook'):
+            self.hook.unhook()
+
+def PLUGIN_ENTRY():
+    return sigmaker_t()

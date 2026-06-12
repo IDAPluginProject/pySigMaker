@@ -13,10 +13,17 @@ Ported by:  [zoomgod](https://www.unknowncheats.me/forum/members/146787.html)
 
 ** Python 3.8 Recommended **
 
-####Updates:
-2026-01-23: Added support for IDA v9, tested on 9.1
-2026-01-24: Changed bin_search flags for IDA 9
-
+#### Updates:   
+    2026-01-23: Added support for IDA 9, tested on 9.1   
+    2026-01-24: Changed bin_search flags for IDA 9   
+    2026-06-11: Mostly internal changes to GUI: Tested on 7.5 and 9.1
+                    1) Fixed bug where sometimes output did not show.
+                    2) Optional AutoDock to the right of Output window
+                    3) Fixed geometry restore issue
+                    4) Clear settings button (requires restart)
+                    5) Dbg tab to dump various levels of the IDA Qt widget tree
+                        to log file. Auto opens log with associated program.
+                    6) Included a requirements.txt file for use with pip if Qt modules are needed.
 
 ### Install:
     copy pySigMaker.py into IDA plugin folder.
