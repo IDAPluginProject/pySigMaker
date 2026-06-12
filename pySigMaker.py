@@ -97,6 +97,12 @@ class LogOptions(IntEnum):
     LOG_DEBUG       = 1
 
 
+def banner(hotkey):
+    print('---------------------------------------------------------------------------------------------')
+    print('   pySigMaker: zoomgod - unknowncheats.me')
+    print('   v%s - hotkey: %s' % (PLUGIN_VERSION, hotkey))
+    print('---------------------------------------------------------------------------------------------')
+
 #
 #
 #  Utility functions
@@ -873,6 +879,8 @@ class PluginGui(idaapi.PluginForm):
         self._root_widget = None
         self._output_window = None
         self._docked = False
+        self._showed_banner = False
+
     #
     # IDA PluginForm overloaded methods
     #
@@ -1040,20 +1048,31 @@ class PluginGui(idaapi.PluginForm):
 
             return widget
 
-    def _find_widget_by_name(self, obj, name):
-
-        objName = obj.objectName()
-
-        if objName == name:
-            return obj
-
+    def _find_widget_by_title(self, obj, titleName):
+        """
+            Locate widget by title
         """
         try: 
-            if obj.windowTitle() == name:
-                return obj
+            titleName = obj.windowTitle()
+            return obj
         except: 
             pass
+
+        for child in obj.children():
+            found = self._find_widget_by_name(child, name)
+            if found:
+                return found
+
+        return None
+
+    def _find_widget_by_name(self, obj, objName):
         """
+            Locate widget by name
+        """
+        objName = obj.objectName()
+
+        if objName == objName:
+            return obj
 
         for child in obj.children():
             found = self._find_widget_by_name(child, name)
@@ -1074,6 +1093,10 @@ class PluginGui(idaapi.PluginForm):
     # Save/Restore plugin form position and size.
     #
     def _formState(self, bSave=False):
+
+        if not self._showed_banner:
+            ida_kernwin.msg_clear()
+            banner(self.__plugin.Settings.hotkey)
 
         if self.__plugin.Settings.bAutoDock:
             ida_kernwin.set_dock_pos("pySigMaker", "Output window", ida_kernwin.DP_RIGHT) 
@@ -1465,18 +1488,12 @@ class SigMakerPlugin:
             self.Gui = PluginGui(self)
         self.Gui.Show('pySigMaker')
 
-def banner(hotkey):
-    print('---------------------------------------------------------------------------------------------')
-    print('pySigMaker: zoomgod - unknowncheats.me')
-    print('            v%s - hotkey: %s' % (PLUGIN_VERSION, hotkey))
-    print('---------------------------------------------------------------------------------------------')
 
 #
 # IDA Plugin Loader
 #
 
 gsigmaker = SigMakerPlugin()
-banner(gsigmaker.Settings.hotkey)
 
 class sigmaker_t(idaapi.plugin_t):
 
@@ -1489,22 +1506,9 @@ class sigmaker_t(idaapi.plugin_t):
     wanted_hotkey = gsigmaker.Settings.hotkey
 
     def init(self):
-        #global gsigmaker
-        #if not gsigmaker:
-        #    ida_kernwin.msg("[+] init instance created\n")
-        #    gsigmaker = SigMakerPlugin()
-
-        #self.hook = UiHook()
-        #self.hook.hook()
-
         return idaapi.PLUGIN_KEEP
 
     def run(self, arg=None):
-        #ida_kernwin.msg("[+] run called\n")
-        #global gsigmaker
-        #if not gsigmaker:
-        #    ida_kernwin.msg("[+] run instance created\n")
-        #    gsigmaker = SigMakerPlugin()
         gsigmaker.showGui()       
         
 
