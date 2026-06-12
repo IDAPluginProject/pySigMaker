@@ -1,0 +1,22 @@
+If you need to install the PyQt5 packages or have errors running the plugin follow the below steps.
+
+Download and install Python 3.8 or a newer version if you are sure PyQT5 is available for it.
+If you run the latest Python there is a high chance the PyQT5 bindings are not available yet.
+I run Python 3.8, some newer may work I just have not tested them.
+
+Assuming Python 3.8 64 bit:
+
+** Close IDA **
+
+1) Download and install Python 3.8 to C:\Python38
+2) Open powershell and run cd C:\Python38
+3) Update pip (Python package installer): ./python -m pip install --upgrade pip
+4) cp requirements.txt to Scripts
+5) cd Scipts
+6) run ./pip3 install -r requirements.txt
+7) Finally tell IDA which Python install to use by running idapyswitch.exe in the IDA folder, 
+	select the number beside the version you installed.
+
+Everything should be working now...
+
+
